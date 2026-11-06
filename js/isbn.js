@@ -2,10 +2,9 @@ const BOOK_PREFIXES = ['978', '979'];
 
 /**
  * Google Books is only called through the Cloudflare Worker in `worker/`.
- * Leave this empty until that Worker is deployed. Do not put an API key here.
- * Example: https://book-record-gb.<account>.workers.dev
+ * No trailing slash. Do not put an API key here.
  */
-export const GOOGLE_BOOKS_PROXY_BASE = '';
+export const GOOGLE_BOOKS_PROXY_BASE = 'https://book-record-gb.littlefortuen-bookshelf.workers.dev';
 
 export const LOOKUP_MESSAGES = {
   offline: '查詢書目需要網絡。這份清單仍可離線查看和修改，請稍後再查，或自行填寫。',
