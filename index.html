@@ -24,6 +24,13 @@
     </header>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="scan-dialog" aria-labelledby="scan-title">
+    <h2 id="scan-title">掃描 ISBN</h2>
+    <p id="scan-hint">將書後的 ISBN 條碼放入框內。</p>
+    <div id="scan-region"></div>
+    <p id="scan-error" class="form-error" role="alert"></p>
+    <button type="button" class="btn ghost" id="scan-close">關閉</button>
+  </dialog>
   <dialog id="confirm-dialog" aria-labelledby="confirm-title">
     <h2 id="confirm-title"></h2>
     <p id="confirm-text"></p>

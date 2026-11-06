@@ -31,6 +31,8 @@ import {
   updateLoan,
   visibleBooks,
 } from './model.js';
+import { lookupIsbn } from './isbn.js';
+import { cameraMessage, loadScannerLibrary, primeCamera, releaseStream, startIsbnScan, stopIsbnScan } from './scan.js';
 import { loadState, saveState } from './store.js';
 
 const ui = {
@@ -423,7 +425,13 @@ function renderBookForm(book) {
       ${field('簡介', 'synopsis', value.synopsis, { multiline: true, max: 5000 })}
       ${field('來源', 'source', value.source, { placeholder: '例如：香港公共圖書館', max: 200 })}
       ${field('索書號', 'callNumber', value.callNumber, { placeholder: '請照圖書館目錄填寫', max: 80, autocap: 'characters' })}
-      ${field('ISBN', 'isbn', value.isbn, { placeholder: '有則填上', max: 40, autocap: 'off' })}
+      ${field('ISBN', 'isbn', value.isbn, { placeholder: '可輸入、貼上或掃描', max: 40, autocap: 'off' })}
+      <div class="isbn-tools">
+        <button type="button" class="btn ghost" data-action="scan-isbn">掃描條碼</button>
+        <button type="button" class="btn ghost" data-action="lookup-isbn">查資料</button>
+      </div>
+      <p id="isbn-status" class="isbn-status" role="status"></p>
+      <p class="help">掃描書後的 ISBN 條碼，或輸入後按「查資料」。會先查 Open Library，沒有再查 Google Books。需要網絡，不會送到香港公共圖書館。填上之後每個欄位仍可修改，按儲存才會寫進這部裝置。</p>
       <p id="form-error" class="form-error" role="alert"></p>
       <button type="submit" class="btn primary">${creating ? '儲存繪本' : '儲存修改'}</button>
     </form>`,
@@ -1018,6 +1026,121 @@ async function clearData() {
   render();
 }
 
+function setIsbnStatus(message, kind = '') {
+  const el = document.querySelector('#isbn-status');
+  if (!el) return;
+  el.textContent = message || '';
+  el.classList.toggle('is-error', kind === 'error');
+  el.classList.toggle('is-ok', kind === 'ok');
+  if (message) el.scrollIntoView({ block: 'center' });
+}
+
+function setIsbnBusy(busy) {
+  document.querySelectorAll('[data-action="lookup-isbn"], [data-action="scan-isbn"]').forEach((button) => {
+    button.disabled = busy;
+  });
+}
+
+let lookupSerial = 0;
+
+function applyIsbnResult(result) {
+  const isbnInput = document.querySelector('#field-isbn');
+  if (!isbnInput) return;
+  if (!result.ok) {
+    if (result.isbn) isbnInput.value = result.isbn;
+    setIsbnStatus(result.error, 'error');
+    return;
+  }
+  const book = result.book;
+  isbnInput.value = book.isbn || result.isbn || isbnInput.value;
+  const titleInput = document.querySelector('#field-title');
+  const authorInput = document.querySelector('#field-author');
+  const synopsisInput = document.querySelector('#field-synopsis');
+  if (titleInput && book.title) titleInput.value = book.title;
+  if (authorInput && book.author) authorInput.value = book.author;
+  if (synopsisInput && book.synopsis) synopsisInput.value = book.synopsis;
+  const filled = [];
+  if (book.title) filled.push('書名');
+  if (book.author) filled.push('作者');
+  if (book.synopsis) filled.push('簡介');
+  filled.push('ISBN');
+  const missing = [];
+  if (!book.author) missing.push('作者');
+  if (!book.synopsis) missing.push('簡介');
+  let message = `已從 ${result.sourceName} 填上${filled.join('、')}。請核對，每個欄位仍可修改。`;
+  if (missing.length) message += `沒有找到${missing.join('和')}。`;
+  if (book.publisher) message += `出版社：${book.publisher}。`;
+  setIsbnStatus(message, 'ok');
+}
+
+async function runIsbnLookup() {
+  const serial = ++lookupSerial;
+  const input = document.querySelector('#field-isbn');
+  if (!input) return;
+  setIsbnBusy(true);
+  setIsbnStatus('正在查詢書目…');
+  try {
+    const result = await lookupIsbn(input.value);
+    if (serial !== lookupSerial || !document.querySelector('#field-isbn')) return;
+    applyIsbnResult(result);
+  } catch {
+    if (serial === lookupSerial) setIsbnStatus('查詢失敗，請檢查網絡後再試。', 'error');
+  } finally {
+    if (serial === lookupSerial) setIsbnBusy(false);
+  }
+}
+
+async function closeScanner() {
+  await stopIsbnScan();
+  const dialog = document.querySelector('#scan-dialog');
+  if (dialog?.open) dialog.close();
+}
+
+async function scanIsbn() {
+  if (!window.isSecureContext) {
+    setIsbnStatus('相機只可在 HTTPS 下使用。請改為輸入 ISBN，再按「查資料」。', 'error');
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setIsbnStatus('這部瀏覽器不能使用相機。請輸入 ISBN，再按「查資料」。', 'error');
+    return;
+  }
+  setIsbnStatus('正在開啟相機…');
+  let stream;
+  try {
+    stream = await primeCamera();
+  } catch (error) {
+    setIsbnStatus(cameraMessage(error), 'error');
+    return;
+  }
+  releaseStream(stream);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const dialog = document.querySelector('#scan-dialog');
+  const errorBox = document.querySelector('#scan-error');
+  if (errorBox) errorBox.textContent = '';
+  dialog.showModal();
+  await startIsbnScan({
+    elementId: 'scan-region',
+    onCode: async (raw) => {
+      const input = document.querySelector('#field-isbn');
+      if (input) input.value = String(raw || '').trim();
+      await closeScanner();
+      await runIsbnLookup();
+    },
+    onError: (message) => {
+      if (errorBox) errorBox.textContent = message;
+      setIsbnStatus(message, 'error');
+    },
+  });
+}
+
+document.querySelector('#scan-close')?.addEventListener('click', () => {
+  closeScanner();
+});
+document.querySelector('#scan-dialog')?.addEventListener('close', () => {
+  stopIsbnScan();
+});
+
 app.addEventListener('click', (event) => {
   const button = event.target.closest('[data-action]');
   if (!button || !app.contains(button)) return;
@@ -1050,6 +1173,14 @@ app.addEventListener('click', (event) => {
   if (action === 'pick-import') document.querySelector('#import-file')?.click();
   if (action === 'load-samples') loadSamples();
   if (action === 'clear-data') clearData();
+  if (action === 'lookup-isbn') {
+    event.preventDefault();
+    runIsbnLookup();
+  }
+  if (action === 'scan-isbn') {
+    event.preventDefault();
+    scanIsbn().catch(() => setIsbnStatus('無法開啟掃描。請改為輸入 ISBN，再按「查資料」。', 'error'));
+  }
 });
 
 app.addEventListener('submit', (event) => {
@@ -1090,6 +1221,7 @@ app.addEventListener('change', (event) => {
 });
 
 window.addEventListener('hashchange', () => {
+  closeScanner();
   const key = location.hash || '#/';
   const changed = key !== lastRouteKey;
   lastRouteKey = key;
@@ -1102,3 +1234,9 @@ render({ routeChanged: true });
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
+
+const preloadScanner = () => {
+  loadScannerLibrary().catch(() => {});
+};
+if ('requestIdleCallback' in window) requestIdleCallback(preloadScanner, { timeout: 3000 });
+else setTimeout(preloadScanner, 1200);

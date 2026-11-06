@@ -1,0 +1,7 @@
+html5-qrcode 2.3.8
+Copyright (c) Minhaz A V
+https://github.com/mebjas/html5-qrcode
+Licensed under the Apache License, Version 2.0. See html5-qrcode.LICENSE.txt.
+
+The build includes ZXing for JS (https://github.com/zxing-js/library), used under its license.
+This file decodes ISBN barcodes in the browser. It does not send images or barcodes anywhere.

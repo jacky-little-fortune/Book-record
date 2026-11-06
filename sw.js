@@ -1,4 +1,4 @@
-const CACHE = 'picture-books-v1';
+const CACHE = 'picture-books-v2';
 
 const ASSETS = [
   './',
@@ -7,6 +7,9 @@ const ASSETS = [
   './js/model.js',
   './js/store.js',
   './js/app.js',
+  './js/isbn.js',
+  './js/scan.js',
+  './js/vendor/html5-qrcode.min.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',

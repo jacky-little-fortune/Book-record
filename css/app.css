@@ -45,6 +45,8 @@ body {
 button, input, textarea {
   font: inherit;
   color: inherit;
+  scroll-margin-top: 12px;
+  scroll-margin-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 28px);
 }
 
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -382,6 +384,29 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.55; }
 .req { color: var(--rose-ink); font-weight: 650; font-size: 0.8rem; }
 .form-error { min-height: 1.2em; margin: 0; color: var(--rose-ink); font-weight: 700; }
 .form-error:empty { display: none; }
+
+.isbn-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.isbn-tools .btn { width: 100%; }
+.isbn-status { margin: 0; }
+.isbn-status:empty { display: none; }
+.isbn-status.is-error { color: var(--rose-ink); font-weight: 700; }
+.isbn-status.is-ok { color: var(--mint-ink); }
+
+#scan-dialog {
+  width: min(520px, calc(100% - 20px));
+  max-height: calc(100dvh - 20px);
+  overflow: auto;
+}
+#scan-dialog h2 { margin: 0 0 6px; font-family: var(--serif); }
+#scan-region {
+  width: 100%;
+  min-height: 240px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #1c1915;
+}
+#scan-region video { width: 100% !important; }
+#scan-dialog .btn { width: 100%; margin-top: 12px; }
 
 .note {
   margin: 12px 0 0;
