@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="繪本借閱清單：在手機上記下香港公共圖書館繪本，資料只存在這部裝置。">
+  <meta name="theme-color" content="#1e3a34">
+  <meta name="color-scheme" content="light">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="繪本借閱">
+  <title>繪本借閱清單</title>
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <p class="eyebrow">香港公共圖書館</p>
+      <h1>繪本借閱清單</h1>
+    </header>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn ghost" id="confirm-cancel">取消</button>
+      <button type="button" class="btn primary" id="confirm-ok">確定</button>
+    </div>
+  </dialog>
+  <noscript>
+    <p class="noscript">請啟用 JavaScript。繪本借閱清單在瀏覽器裡運作，資料仍只會存在這部裝置。</p>
+  </noscript>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
