@@ -11,6 +11,7 @@ import {
   backupFilename,
   buildSampleBooks,
   cardById,
+  cleanCoverUrl,
   createBook,
   defaultDueDate,
   duePhrase,
@@ -212,6 +213,14 @@ function badgesFor(book, today) {
   return badges.map(([kind, label]) => `<span class="badge ${kind}">${label}</span>`).join('');
 }
 
+function coverMarkup(url, size) {
+  const safe = cleanCoverUrl(url);
+  if (!safe) {
+    return `<div class="cover cover-${size} is-empty" role="img" aria-label="沒有封面"><span>無封面</span></div>`;
+  }
+  return `<img class="cover cover-${size}" src="${esc(safe)}" alt="封面" loading="lazy" decoding="async">`;
+}
+
 function bookCard(book, today) {
   const loan = activeLoan(book);
   const card = loan ? cardById(loan.card) : null;
@@ -225,13 +234,16 @@ function bookCard(book, today) {
   const call = book.callNumber ? `<p class="call-no">索書號 ${esc(book.callNumber)}</p>` : '';
   return `<article class="book tone-${tone}">
     <a class="book-hit" href="#/book/${encodeURIComponent(book.id)}">
-      <div class="book-title-row">
-        <h2>${esc(book.title)}</h2>
-        <span class="badges">${badgesFor(book, today)}</span>
+      ${coverMarkup(book.coverUrl, 'sm')}
+      <div class="book-copy">
+        <div class="book-title-row">
+          <h2>${esc(book.title)}</h2>
+          <span class="badges">${badgesFor(book, today)}</span>
+        </div>
+        ${book.author ? `<p class="author">${esc(book.author)}</p>` : ''}
+        ${call}
+        ${line}
       </div>
-      ${book.author ? `<p class="author">${esc(book.author)}</p>` : ''}
-      ${call}
-      ${line}
     </a>
     <button type="button" class="star${book.wanted ? ' is-on' : ''}" data-action="toggle-want" data-id="${esc(book.id)}" aria-pressed="${book.wanted ? 'true' : 'false'}" aria-label="${esc(book.wanted ? `從想借移除 ${book.title}` : `加入想借 ${book.title}`)}">${iconStar(book.wanted)}</button>
   </article>`;
@@ -383,7 +395,8 @@ function renderDetail(book) {
     title: book.title,
     backHref: '#/',
     tab: 'list',
-    content: `${loanPanel}
+    content: `<div class="detail-cover">${coverMarkup(book.coverUrl, 'lg')}</div>
+      ${loanPanel}
       <div class="badges detail-badges">${badgesFor(book, today)}</div>
       <div class="btn-stack">${primary}</div>
       <div class="btn-grid">
@@ -413,6 +426,7 @@ function renderBookForm(book) {
     source: '',
     callNumber: '',
     isbn: '',
+    coverUrl: '',
   };
   const html = shell({
     title: creating ? '新增繪本' : '編輯繪本',
@@ -420,6 +434,8 @@ function renderBookForm(book) {
     tab: 'list',
     content: `<form class="panel form" data-form="book" novalidate>
       ${book ? `<input type="hidden" name="id" value="${esc(book.id)}">` : ''}
+      <div id="cover-slot" class="form-cover">${coverMarkup(value.coverUrl, 'lg')}</div>
+      <input type="hidden" id="field-cover" name="coverUrl" value="${esc(value.coverUrl || '')}">
       ${field('書名', 'title', value.title, { required: true, max: 200 })}
       ${field('作者', 'author', value.author, { max: 200 })}
       ${field('簡介', 'synopsis', value.synopsis, { multiline: true, max: 5000 })}
@@ -1067,7 +1083,12 @@ function applyIsbnResult(result) {
     return;
   }
   const book = result.book;
+  const cover = cleanCoverUrl(book.coverUrl);
   isbnInput.value = book.isbn || result.isbn || isbnInput.value;
+  const coverInput = document.querySelector('#field-cover');
+  const coverSlot = document.querySelector('#cover-slot');
+  if (coverInput) coverInput.value = cover;
+  if (coverSlot) coverSlot.innerHTML = coverMarkup(cover, 'lg');
   const titleInput = document.querySelector('#field-title');
   const authorInput = document.querySelector('#field-author');
   const synopsisInput = document.querySelector('#field-synopsis');
@@ -1078,6 +1099,7 @@ function applyIsbnResult(result) {
   if (book.title) filled.push('書名');
   if (book.author) filled.push('作者');
   if (book.synopsis) filled.push('簡介');
+  if (cover) filled.push('封面');
   filled.push('ISBN');
   const missing = [];
   if (!book.author) missing.push('作者');
@@ -1250,6 +1272,21 @@ window.addEventListener('hashchange', () => {
 
 lastRouteKey = location.hash || '#/';
 render({ routeChanged: true });
+
+document.addEventListener(
+  'error',
+  (event) => {
+    const image = event.target;
+    if (!(image instanceof HTMLImageElement) || !image.classList.contains('cover')) return;
+    const placeholder = document.createElement('div');
+    placeholder.className = `${image.className} is-empty`;
+    placeholder.setAttribute('role', 'img');
+    placeholder.setAttribute('aria-label', '沒有封面');
+    placeholder.innerHTML = '<span>無封面</span>';
+    image.replaceWith(placeholder);
+  },
+  true,
+);
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});

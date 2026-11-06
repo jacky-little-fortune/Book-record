@@ -49,6 +49,7 @@ test('Open Library 有資料時填上書名、作者、簡介和 ISBN', async ()
           title: 'The Very Hungry Caterpillar',
           authors: [{ name: 'Eric Carle' }],
           publishers: [{ name: 'Philomel Books' }],
+          cover: { medium: 'https://covers.openlibrary.org/b/id/42-M.jpg' },
         },
       });
     }
@@ -63,6 +64,7 @@ test('Open Library 有資料時填上書名、作者、簡介和 ISBN', async ()
   assert.doesNotMatch(result.book.synopsis, /<br>/);
   assert.equal(result.book.isbn, ISBN13);
   assert.equal(result.book.publisher, 'Philomel Books');
+  assert.equal(result.book.coverUrl, 'https://covers.openlibrary.org/b/id/42-M.jpg');
 });
 
 test('Open Library 沒有時改經代理查 Google Books', async () => {
@@ -77,6 +79,7 @@ test('Open Library 沒有時改經代理查 Google Books', async () => {
         synopsis: '星期一吃蘋果。',
         isbn: ISBN13,
         publisher: '上誼',
+        cover: 'https://books.google.com/books/content?id=abc&zoom=1',
       });
     }
     return jsonResponse(404, {});
@@ -88,6 +91,7 @@ test('Open Library 沒有時改經代理查 Google Books', async () => {
   assert.equal(result.book.author, '艾瑞·卡爾');
   assert.equal(result.book.synopsis, '星期一吃蘋果。');
   assert.equal(result.book.publisher, '上誼');
+  assert.equal(result.book.coverUrl, 'https://books.google.com/books/content?id=abc&zoom=1');
   assert.ok(seen.some((url) => url.startsWith('https://gb-proxy.test/lookup?isbn=')));
   assert.equal(seen.some((url) => url.includes('googleapis.com')), false);
 });

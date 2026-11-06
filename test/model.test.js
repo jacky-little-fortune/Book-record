@@ -8,6 +8,7 @@ import {
   applyBorrow,
   buildSampleBooks,
   cardById,
+  cleanCoverUrl,
   createBook,
   defaultDueDate,
   formatWantList,
@@ -22,6 +23,13 @@ import {
 } from '../js/model.js';
 
 const TODAY = '2026-11-06';
+
+test('封面網址只接受 Open Library 與 Google Books 的 https', () => {
+  assert.equal(cleanCoverUrl('https://covers.openlibrary.org/b/isbn/9780399226908-M.jpg?default=false'), 'https://covers.openlibrary.org/b/isbn/9780399226908-M.jpg?default=false');
+  assert.equal(cleanCoverUrl('http://books.google.com/books/content?id=1'), 'https://books.google.com/books/content?id=1');
+  assert.equal(cleanCoverUrl('javascript:alert(1)'), '');
+  assert.equal(cleanCoverUrl('https://evil.example/cover.jpg'), '');
+});
 
 test('借期按借出日加上日數', () => {
   assert.equal(addDays('2026-11-06', 14), '2026-11-20');

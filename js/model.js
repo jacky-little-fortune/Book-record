@@ -156,6 +156,25 @@ function cleanText(value, max) {
   return value.trim().slice(0, max);
 }
 
+const COVER_HOSTS = ['covers.openlibrary.org', 'books.google.com', 'books.googleusercontent.com'];
+
+export function cleanCoverUrl(value) {
+  const text = cleanText(typeof value === 'string' ? value : '', 800);
+  if (!text) return '';
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    return '';
+  }
+  if (url.protocol === 'http:') url.protocol = 'https:';
+  if (url.protocol !== 'https:') return '';
+  const host = url.hostname.toLowerCase();
+  const allowed = COVER_HOSTS.includes(host) || host.endsWith('.googleusercontent.com') || host.endsWith('.ggpht.com');
+  if (!allowed) return '';
+  return url.toString();
+}
+
 export function applyBookFields(book, fields, nowIso) {
   const title = cleanText(fields.title, 200);
   if (!title) return { ok: false, error: '請填寫書名。' };
@@ -169,6 +188,7 @@ export function applyBookFields(book, fields, nowIso) {
       source: cleanText(fields.source, 200),
       callNumber: cleanText(fields.callNumber, 80),
       isbn: cleanText(fields.isbn, 40),
+      coverUrl: cleanCoverUrl(fields.coverUrl ?? book.coverUrl),
       updatedAt: nowIso,
     },
   };
@@ -184,6 +204,7 @@ export function createBook(fields, nowIso, id) {
       source: '',
       callNumber: '',
       isbn: '',
+      coverUrl: '',
       wanted: false,
       reserved: false,
       history: [],
@@ -447,6 +468,7 @@ export function normalizeBook(raw) {
     source: cleanText(raw.source, 200),
     callNumber: cleanText(raw.callNumber, 80),
     isbn: cleanText(raw.isbn, 40),
+    coverUrl: cleanCoverUrl(raw.coverUrl),
     wanted: Boolean(raw.wanted),
     reserved: Boolean(raw.reserved),
     history,

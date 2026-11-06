@@ -63,7 +63,8 @@ test('只回傳整理過的書目，並加上允許的 CORS', async () => {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), PAGE);
   const body = await response.json();
-  assert.deepEqual(Object.keys(body).sort(), ['author', 'isbn', 'publisher', 'synopsis', 'title']);
+  assert.deepEqual(Object.keys(body).sort(), ['author', 'cover', 'isbn', 'publisher', 'synopsis', 'title']);
+  assert.equal(body.cover, 'https://example.test/cover.jpg');
   assert.equal(body.title, '好餓的毛毛蟲');
   assert.equal(body.author, '艾瑞·卡爾');
   assert.equal(body.synopsis, '星期一吃蘋果。');

@@ -70,6 +70,20 @@ function clip(value, max) {
   return text.length > max ? text.slice(0, max) : text;
 }
 
+function coverFromLinks(links) {
+  if (!links || typeof links !== 'object') return '';
+  const raw = links.extraLarge || links.large || links.medium || links.small || links.thumbnail || links.smallThumbnail || '';
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    if (url.protocol === 'http:') url.protocol = 'https:';
+    if (url.protocol !== 'https:') return '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
 function mapVolume(payload, fallbackIsbn) {
   const info = payload?.items?.[0]?.volumeInfo;
   if (!info?.title) return null;
@@ -81,6 +95,7 @@ function mapVolume(payload, fallbackIsbn) {
     synopsis: clip(info.description, 5000),
     isbn: isbn13 || fallbackIsbn,
     publisher: clip(info.publisher, 200),
+    cover: coverFromLinks(info.imageLinks),
   };
 }
 

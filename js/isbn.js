@@ -198,13 +198,38 @@ async function lookupOpenLibrary(parsed, fetchImpl) {
 
   const title = clip(edition?.title || summary?.title, 200);
   if (!title) return null;
+  const isbn = edition?.isbn_13?.[0] || parsed.isbn13 || parsed.isbn10;
   return {
     title,
     author: clip(authors.join('、'), 200),
     synopsis,
-    isbn: edition?.isbn_13?.[0] || parsed.isbn13 || parsed.isbn10,
+    isbn,
     publisher: publisherName(edition?.publishers) || publisherName(summary?.publishers),
+    coverUrl: openLibraryCover(edition, summary, parsed.isbn13 || isbn),
   };
+}
+
+function httpsUrl(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  try {
+    const url = new URL(text);
+    if (url.protocol === 'http:') url.protocol = 'https:';
+    if (url.protocol !== 'https:') return '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function openLibraryCover(edition, summary, isbn13) {
+  const hosted = summary?.cover?.large || summary?.cover?.medium || summary?.cover?.small;
+  const direct = httpsUrl(hosted);
+  if (direct) return direct;
+  const coverId = (edition?.covers || []).find((id) => Number(id) > 0);
+  if (coverId) return `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`;
+  if (isbn13) return `https://covers.openlibrary.org/b/isbn/${isbn13}-M.jpg?default=false`;
+  return '';
 }
 
 function proxyBase(options) {
@@ -231,6 +256,7 @@ async function lookupGoogleBooks(parsed, fetchImpl, options) {
     synopsis: clip(book.synopsis, 5000),
     isbn: book.isbn || parsed.isbn13 || parsed.isbn10,
     publisher: publisherName(book.publisher),
+    coverUrl: httpsUrl(book.cover),
   };
 }
 
@@ -255,7 +281,17 @@ export async function lookupIsbn(input, options = {}) {
   let openLibraryKind = 'not_found';
   try {
     const book = await lookupOpenLibrary(parsed, fetchImpl);
-    if (book?.title) return { ok: true, sourceName: 'Open Library', isbn: parsed.isbn13, book };
+    if (book?.title) {
+      if (!book.coverUrl) {
+        try {
+          const extra = await lookupGoogleBooks(parsed, fetchImpl, options);
+          if (extra?.coverUrl) book.coverUrl = extra.coverUrl;
+        } catch {
+          /* 封面是附加資料，查不到不影響 Open Library 的書目。 */
+        }
+      }
+      return { ok: true, sourceName: 'Open Library', isbn: parsed.isbn13, book };
+    }
   } catch (error) {
     openLibraryKind = failureKind(error);
   }
