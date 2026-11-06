@@ -31,7 +31,7 @@ import {
   updateLoan,
   visibleBooks,
 } from './model.js';
-import { lookupIsbn } from './isbn.js';
+import { hkplCatalogUrl, lookupIsbn, parseIsbn } from './isbn.js';
 import { cameraMessage, loadScannerLibrary, primeCamera, releaseStream, startIsbnScan, stopIsbnScan } from './scan.js';
 import { loadState, saveState } from './store.js';
 
@@ -431,7 +431,8 @@ function renderBookForm(book) {
         <button type="button" class="btn ghost" data-action="lookup-isbn">查資料</button>
       </div>
       <p id="isbn-status" class="isbn-status" role="status"></p>
-      <p class="help">掃描書後的 ISBN 條碼，或輸入後按「查資料」。會先查 Open Library，沒有再查 Google Books。需要網絡，不會送到香港公共圖書館。填上之後每個欄位仍可修改，按儲存才會寫進這部裝置。</p>
+      <a id="hkpl-link" class="btn ghost hkpl-link" hidden target="_blank" rel="noopener noreferrer">在香港公共圖書館開啟</a>
+      <p class="help">掃描書後的 ISBN 條碼，或輸入後按「查資料」。先查 Open Library；若已設定代理，找不到才再查 Google Books。查完可開啟香港公共圖書館目錄，自行抄下索書號。不會自動填索書號，也不會把借閱紀錄送到圖書館。填上之後每個欄位仍可修改，按儲存才寫進這部裝置。</p>
       <p id="form-error" class="form-error" role="alert"></p>
       <button type="submit" class="btn primary">${creating ? '儲存繪本' : '儲存修改'}</button>
     </form>`,
@@ -1026,6 +1027,18 @@ async function clearData() {
   render();
 }
 
+function setHkplLink(isbn13) {
+  const link = document.querySelector('#hkpl-link');
+  if (!link) return;
+  if (!isbn13) {
+    link.hidden = true;
+    link.removeAttribute('href');
+    return;
+  }
+  link.href = hkplCatalogUrl(isbn13);
+  link.hidden = false;
+}
+
 function setIsbnStatus(message, kind = '') {
   const el = document.querySelector('#isbn-status');
   if (!el) return;
@@ -1046,6 +1059,8 @@ let lookupSerial = 0;
 function applyIsbnResult(result) {
   const isbnInput = document.querySelector('#field-isbn');
   if (!isbnInput) return;
+  const isbn13 = result.isbn || (result.ok ? result.book?.isbn : '');
+  setHkplLink(isbn13 && /^\d{13}$/.test(isbn13) ? isbn13 : '');
   if (!result.ok) {
     if (result.isbn) isbnInput.value = result.isbn;
     setIsbnStatus(result.error, 'error');
@@ -1067,7 +1082,7 @@ function applyIsbnResult(result) {
   const missing = [];
   if (!book.author) missing.push('作者');
   if (!book.synopsis) missing.push('簡介');
-  let message = `已從 ${result.sourceName} 填上${filled.join('、')}。請核對，每個欄位仍可修改。`;
+  let message = `已從 ${result.sourceName} 填上${filled.join('、')}。請核對，每個欄位仍可修改。索書號請到香港公共圖書館目錄抄寫。`;
   if (missing.length) message += `沒有找到${missing.join('和')}。`;
   if (book.publisher) message += `出版社：${book.publisher}。`;
   setIsbnStatus(message, 'ok');
@@ -1078,13 +1093,18 @@ async function runIsbnLookup() {
   const input = document.querySelector('#field-isbn');
   if (!input) return;
   setIsbnBusy(true);
+  setHkplLink('');
   setIsbnStatus('正在查詢書目…');
   try {
     const result = await lookupIsbn(input.value);
     if (serial !== lookupSerial || !document.querySelector('#field-isbn')) return;
     applyIsbnResult(result);
   } catch {
-    if (serial === lookupSerial) setIsbnStatus('查詢失敗，請檢查網絡後再試。', 'error');
+    if (serial === lookupSerial) {
+      setIsbnStatus('查詢失敗，請檢查網絡後再試。ISBN 已保留，你可以自行填寫。', 'error');
+      const parsed = parseIsbn(input.value);
+      setHkplLink(parsed.ok ? parsed.isbn13 : '');
+    }
   } finally {
     if (serial === lookupSerial) setIsbnBusy(false);
   }

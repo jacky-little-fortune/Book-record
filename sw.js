@@ -1,4 +1,4 @@
-const CACHE = 'picture-books-v2';
+const CACHE = 'picture-books-v3';
 
 const ASSETS = [
   './',

@@ -1,0 +1,9 @@
+{
+  "name": "book-record-gb",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  }
+}

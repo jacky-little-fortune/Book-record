@@ -1,0 +1,9 @@
+name = "book-record-gb"
+main = "src/index.js"
+compatibility_date = "2026-11-06"
+workers_dev = true
+
+# The Google Books API key is a Worker secret, not a var in this file.
+# From the worker/ directory:
+#   npx wrangler secret put GOOGLE_BOOKS_API_KEY
+# Do not commit the key, and do not put it in the web page.

@@ -36,9 +36,35 @@
 1. 輸入或貼上 10 位或 13 位 ISBN，橫線可以留著。
 2. 按「查資料」。
 
-查詢會先問 Open Library，那裡沒有再問 Google Books。只會送出 ISBN，用來取回公開書目，不會把借閱紀錄送到香港公共圖書館，也不會替你填索書號。來源和索書號仍要自己填。
+查詢先問 Open Library。若已部署 Google Books 代理，那裡沒有再問 Google Books。只會送出 ISBN，用來取回公開書目，不會把借閱紀錄送到香港公共圖書館，也不會替你填索書號。來源和索書號仍要自己填。
+
+查完之後（不論有沒有查到書）會出現「在香港公共圖書館開啟」。它會用 ISBN-13 打開圖書館目錄的檢索結果，方便你自己抄索書號。這個連結不會把索書號抓回來。
+
+畫面會分開說明幾種查不到的情況：目錄裡沒有這本書、書目服務忙碌或次數已滿、以及網絡失敗。ISBN 都會保留。代理還沒設定時，Open Library 仍然可用。
 
 找不到這本書時，會直接說明查不到，並保留 ISBN，方便你自己補上書名。查詢需要網絡。沒有網絡時，已經儲存的清單仍可查看和修改。
+
+## Google Books 代理
+
+網頁不會內嵌 Google API 金鑰，也不會由瀏覽器直接呼叫 `googleapis.com`。第二個目錄要經過 `worker/` 裡的 Cloudflare Worker。Worker 尚未部署或尚未放入金鑰時，查書仍只用 Open Library，應用程式不會壞掉。
+
+部署步驟（在自己的電腦做，不要把金鑰貼進對話、Git 或網頁）：
+
+1. 到 Google Cloud 建立專案，啟用 **Books API**，然後建立 API 金鑰。
+2. 限制這把金鑰只可呼叫 Books API。若再加上 HTTP 參照網址限制，請包含 `https://jacky-little-fortune.github.io/*`。Worker 向 Google 查書時會帶上這個網站的 Referer。參照網址限制可以被偽造，所以真正守住金鑰的是 Worker 密鑰，以及 Worker 裡每個 IP 每 10 分鐘 30 次的限制。不要把金鑰放進網頁。
+3. 安裝 Wrangler 後，在 `worker/` 目錄部署：
+   ```bash
+   cd worker
+   npx wrangler deploy
+   ```
+4. 把金鑰存成 Worker Secret（終端機會問你貼上，不會寫進檔案）：
+   ```bash
+   npx wrangler secret put GOOGLE_BOOKS_API_KEY
+   ```
+   也可以在 Cloudflare 控制台打開該 Worker，到 Settings → Variables and Secrets，新增加密的 `GOOGLE_BOOKS_API_KEY`。
+5. 部署完成後，把 Wrangler 顯示的網址（例如 `https://book-record-gb.<帳號>.workers.dev`，不要結尾斜線）填進 `js/isbn.js` 最上面的 `GOOGLE_BOOKS_PROXY_BASE`，然後再推上 `main`。留空代表暫時不用 Google Books。
+
+Worker 接受 `GET /lookup?isbn=` 或 `GET /books?isbn=`。它會檢查 ISBN 校驗碼；格式不對回 400。沒有密鑰時回 503，`error` 為 `not_configured`。瀏覽器來源只允許 `https://jacky-little-fortune.github.io`，以及本機的 `http://localhost` 和 `http://127.0.0.1`。回傳只有書名、作者、簡介、ISBN 和出版社。
 
 ## 三張借書卡
 

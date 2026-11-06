@@ -1,5 +1,24 @@
 const BOOK_PREFIXES = ['978', '979'];
 
+/**
+ * Google Books is only called through the Cloudflare Worker in `worker/`.
+ * Leave this empty until that Worker is deployed. Do not put an API key here.
+ * Example: https://book-record-gb.<account>.workers.dev
+ */
+export const GOOGLE_BOOKS_PROXY_BASE = '';
+
+export const LOOKUP_MESSAGES = {
+  offline: '查詢書目需要網絡。這份清單仍可離線查看和修改，請稍後再查，或自行填寫。',
+  busy: '書目服務暫時忙碌，或查詢次數已達上限。請稍後再試，或自行填寫。ISBN 已保留。',
+  network: '查詢失敗，請檢查網絡後再試。ISBN 已保留，你可以自行填寫。',
+  notFound: '在目錄裡找不到這本書。ISBN 已保留，請自行填寫，或到香港公共圖書館目錄查看。',
+  notConfigured: 'Open Library 沒有這本書。Google Books 代理尚未設定，所以沒有第二個目錄可查。ISBN 已保留，請自行填寫，或到香港公共圖書館目錄查看。',
+};
+
+export function hkplCatalogUrl(isbn13) {
+  return `https://webcat.hkpl.gov.hk/search/query?field_1=isbn&match_1=MUST&term_1=${encodeURIComponent(isbn13)}&theme=WEB`;
+}
+
 export function plainText(value) {
   if (!value) return '';
   if (typeof value === 'object') value = value.value || '';
@@ -88,20 +107,46 @@ async function fetchJson(fetchImpl, url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
   try {
-    const response = await fetchImpl(url, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    if (response.status === 404) return { missing: true, status: 404 };
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+    } catch (error) {
+      const wrapped = new Error('network');
+      wrapped.code = 'network';
+      wrapped.cause = error;
+      throw wrapped;
+    }
+    let data = null;
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
+    if (response.status === 404) return { missing: true, status: 404, data };
     if (!response.ok) {
       const error = new Error('http');
       error.status = response.status;
+      if (data?.error === 'not_configured') error.code = 'not_configured';
+      else if (response.status === 429 || response.status >= 500) error.code = 'busy';
+      else error.code = 'http';
       throw error;
     }
-    return { missing: false, status: response.status, data: await response.json() };
+    return { missing: false, status: response.status, data };
   } finally {
     clearTimeout(timer);
   }
+}
+
+function failureKind(error) {
+  if (!error) return 'network';
+  if (error.code === 'not_configured') return 'not_configured';
+  if (error.code === 'busy' || error.status === 429 || (typeof error.status === 'number' && error.status >= 500)) {
+    return 'busy';
+  }
+  return 'network';
 }
 
 function bookFromDataApi(data, isbn) {
@@ -163,24 +208,41 @@ async function lookupOpenLibrary(parsed, fetchImpl) {
   };
 }
 
-async function lookupGoogleBooks(parsed, fetchImpl) {
+function proxyBase(options) {
+  const value = options.googleBooksProxyBase ?? GOOGLE_BOOKS_PROXY_BASE;
+  return String(value || '').trim().replace(/\/$/, '');
+}
+
+async function lookupGoogleBooks(parsed, fetchImpl, options) {
+  const base = proxyBase(options);
+  if (!base) {
+    const error = new Error('not_configured');
+    error.code = 'not_configured';
+    error.status = 503;
+    throw error;
+  }
   const isbn = parsed.isbn13 || parsed.isbn10;
-  const result = await fetchJson(
-    fetchImpl,
-    `https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}`,
-  );
-  if (result.missing) return null;
-  const info = result.data?.items?.[0]?.volumeInfo;
-  if (!info?.title) return null;
-  const identifiers = info.industryIdentifiers || [];
-  const isbn13 = identifiers.find((item) => item.type === 'ISBN_13')?.identifier;
+  const result = await fetchJson(fetchImpl, `${base}/lookup?isbn=${encodeURIComponent(isbn)}`);
+  if (result.missing || result.data?.error === 'not_found') return null;
+  const book = result.data || {};
+  if (!book.title) return null;
   return {
-    title: clip(info.title, 200),
-    author: clip((info.authors || []).join('、'), 200),
-    synopsis: clip(info.description, 5000),
-    isbn: isbn13 || parsed.isbn13 || parsed.isbn10,
-    publisher: publisherName(info.publisher),
+    title: clip(book.title, 200),
+    author: clip(book.author, 200),
+    synopsis: clip(book.synopsis, 5000),
+    isbn: book.isbn || parsed.isbn13 || parsed.isbn10,
+    publisher: publisherName(book.publisher),
   };
+}
+
+function failureResult(parsed, code) {
+  const messages = {
+    busy: LOOKUP_MESSAGES.busy,
+    network: LOOKUP_MESSAGES.network,
+    not_configured: LOOKUP_MESSAGES.notConfigured,
+    not_found: LOOKUP_MESSAGES.notFound,
+  };
+  return { ok: false, isbn: parsed.isbn13, code, error: messages[code] || LOOKUP_MESSAGES.network };
 }
 
 export async function lookupIsbn(input, options = {}) {
@@ -188,40 +250,26 @@ export async function lookupIsbn(input, options = {}) {
   if (!parsed.ok) return parsed;
   const online = options.online ?? (typeof navigator === 'undefined' || navigator.onLine !== false);
   if (!online) {
-    return {
-      ok: false,
-      isbn: parsed.isbn13,
-      error: '查詢書目需要網絡。這份清單仍可離線查看和修改，請稍後再查，或自行填寫。',
-    };
+    return { ok: false, isbn: parsed.isbn13, code: 'offline', error: LOOKUP_MESSAGES.offline };
   }
   const fetchImpl = options.fetchImpl || globalThis.fetch;
-  let openLibraryError = null;
+  let openLibraryKind = 'not_found';
   try {
     const book = await lookupOpenLibrary(parsed, fetchImpl);
-    if (book?.title) return { ok: true, sourceName: 'Open Library', book };
+    if (book?.title) return { ok: true, sourceName: 'Open Library', isbn: parsed.isbn13, book };
   } catch (error) {
-    openLibraryError = error;
+    openLibraryKind = failureKind(error);
   }
+  let googleKind = 'not_found';
   try {
-    const book = await lookupGoogleBooks(parsed, fetchImpl);
-    if (book?.title) return { ok: true, sourceName: 'Google Books', book };
+    const book = await lookupGoogleBooks(parsed, fetchImpl, options);
+    if (book?.title) return { ok: true, sourceName: 'Google Books', isbn: parsed.isbn13, book };
   } catch (error) {
-    if (!openLibraryError && (error.status === 429 || error.status >= 500)) {
-      return {
-        ok: false,
-        isbn: parsed.isbn13,
-        error: '暫時查不到這本書，書目服務正忙。請稍後再試，或自行填寫。ISBN 已保留。',
-      };
-    }
-    return {
-      ok: false,
-      isbn: parsed.isbn13,
-      error: '查詢失敗，請檢查網絡後再試。ISBN 已保留，你可以自行填寫。',
-    };
+    googleKind = failureKind(error);
   }
-  return {
-    ok: false,
-    isbn: parsed.isbn13,
-    error: '找不到這本書的資料。ISBN 已保留，請自行填寫書名、作者和簡介。',
-  };
+  const kinds = [openLibraryKind, googleKind];
+  if (kinds.includes('busy')) return failureResult(parsed, 'busy');
+  if (kinds.includes('network')) return failureResult(parsed, 'network');
+  if (googleKind === 'not_configured') return failureResult(parsed, 'not_configured');
+  return failureResult(parsed, 'not_found');
 }

@@ -391,6 +391,8 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.55; }
 .isbn-status:empty { display: none; }
 .isbn-status.is-error { color: var(--rose-ink); font-weight: 700; }
 .isbn-status.is-ok { color: var(--mint-ink); }
+.hkpl-link { text-align: center; }
+.hkpl-link[hidden] { display: none !important; }
 
 #scan-dialog {
   width: min(520px, calc(100% - 20px));
